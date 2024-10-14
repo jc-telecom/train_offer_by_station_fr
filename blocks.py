@@ -13,7 +13,7 @@ def render_trips_tab(df, trip_type, title):
     show_only_next_trips_label = "Show only next departures" if trip_type == "departures" else "Show only next arrivals"
 
     # Tab title
-    st.title(title)
+    st.title(title, "next_trips")
 
     # Tab metrics
     col_metric_1, col_metric_2 = st.columns(2)

@@ -71,29 +71,34 @@ class Feed:
 
     # Merge methods
 
-    def add_stop_names(self, df, stop_id_col_name="stop_id", subset=["stop_id", "stop_name"]):
+    def add_stop_names(self, df, stop_id_col_name="stop_id", subset=["stop_id", "stop_name"], right_prefix=""):
         return df.merge(
-            self.stops[subset], on=stop_id_col_name, how="left")
+            self.stops[subset].add_prefix(right_prefix), left_on=stop_id_col_name, right_on=f"{right_prefix}stop_id", how="left", copy=False)
 
     def add_stop_times(self, df, stop_id_col_name="stop_id", subset=[
             "trip_id", "arrival_time", "departure_time", "stop_id", "stop_sequence", "pickup_type", "drop_off_type"]):
         return df.merge(
-            self.stop_times[subset], on=stop_id_col_name)
+            self.stop_times[subset], left_on=stop_id_col_name, right_on="stop_id")
 
     def add_trips(self, df, trip_id_col_name="trip_id",  subset=["route_id", "service_id", "trip_id", "trip_headsign"]):
         return df.merge(
-            self.trips[subset], on=trip_id_col_name)
+            self.trips[subset], left_on=trip_id_col_name, right_on="trip_id",)
 
     def add_route(self, df, route_id_col_name="route_id", subset=["route_id", "route_short_name", "route_long_name", "route_color", "route_text_color"]):
         return df.merge(
-            self.routes[subset], on=route_id_col_name)
+            self.routes[subset], left_on=route_id_col_name, right_on="route_id")
 
     def add_starting_terminus_stops(self, df, stop_name=True):
         df_starting_stop, df_terminus_stop = self.get_starting_terminus_stops(
             stop_name)
         return df.merge(df_starting_stop, on="trip_id").merge(df_terminus_stop, on="trip_id")
 
-    # def add
+    def add_intermediate_stops(self, df, stop_name=True):
+        df_stops_except_selected = self.stop_times[~self.stop_times["stop_id"].isin(
+            df["stop_id"].unique())]
+        df = df.merge(df_stops_except_selected[["trip_id", "stop_id"]].add_prefix("intermediate_"), left_on="trip_id", right_on="intermediate_trip_id", how="inner",
+                      suffixes=("", "_intermediate_stop"))
+        return self.add_stop_names(df, stop_id_col_name="intermediate_stop_id", right_prefix="intermediate_").drop(columns=["intermediate_trip_id"])
 
     def filter_stops(self, stop_name):
         return self.stops[self.stops["stop_name"].str.contains(stop_name, case=False)]
@@ -149,7 +154,7 @@ class Feed:
             df_today_calendar[["service_id", "date"
                                ]], on="service_id")
 
-        df = df[["trip_id", "stop_name", "arrival_time", "departure_time", "stop_sequence", "pickup_type", "drop_off_type", "trip_headsign",
+        df = df[["trip_id", "stop_id", "stop_name", "arrival_time", "departure_time", "stop_sequence", "pickup_type", "drop_off_type", "trip_headsign",
                  "route_short_name", "route_long_name", "route_color", "route_text_color", "date"]]
         df.sort_values(by="departure_time", inplace=True)
 
