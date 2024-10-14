@@ -10,6 +10,7 @@ def render_trips_tab(df, trip_type, title):
 
     time_column = "departure_time" if trip_type == "departures" else "arrival_time"
     destination_column = "terminus_stop_name" if trip_type == "departures" else "starting_stop_name"
+    show_only_next_trips_label = "Show only next departures" if trip_type == "departures" else "Show only next arrivals"
 
     # Tab title
     st.title(title)
@@ -20,12 +21,13 @@ def render_trips_tab(df, trip_type, title):
         {"departures": "Number of departures today",
             "arrivals": "Number of arrivals"},
         {"departures": "Next departure", "arrivals": "Next arrival"}]
-
+    next_trip = df[df[time_column] > datetime.now(
+    ).time()].iloc[0][time_column].strftime("%H:%M") if df[df[time_column] > datetime.now().time()].shape[0] > 0 else None
     metrics_values = [
         {"departures": df.shape[0],
             "arrivals": df.shape[0]},
-        {"departures": df[df[time_column] > datetime.now().time()].iloc[0][time_column].strftime("%H:%M"),
-            "arrivals": df[df[time_column] > datetime.now().time()].iloc[0][time_column].strftime("%H:%M")}
+        {"departures": next_trip if next_trip else "None",
+            "arrivals": next_trip if next_trip else "None"}
     ]
 
     for index, col_metric in enumerate([col_metric_1, col_metric_2]):
@@ -36,7 +38,6 @@ def render_trips_tab(df, trip_type, title):
     # DATAFRAME
 
     # Display only the next trips button
-    show_only_next_trips_label = "Show only next departures" if trip_type == "departures" else "Show only next arrivals"
     show_only_next_trips = st.toggle(
         show_only_next_trips_label, False)
     if show_only_next_trips:
@@ -61,6 +62,6 @@ def render_trips_tab(df, trip_type, title):
             "Line",
         ),
         destination_column: st.column_config.Column(
-            "Destination",
+            "Destination" if trip_type == "departures" else "Origin",
         ),
     },)

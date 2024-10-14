@@ -4,6 +4,7 @@ import zipfile
 import io
 import numpy as np
 from datetime import datetime
+from utils import *
 
 
 class Feed:
@@ -28,29 +29,44 @@ class Feed:
         "transfers": {"txt_file": "transfers.txt", "required": False},
         "trips": {"txt_file": "trips.txt", "required": True}}
 
-    def load(self, feed_url):
+    def load(self, feeds_url, print_info=False, progress_bar=None, progress_bar_start=0, progress_bar_end=1):
+        feeds_url = feeds_url if isinstance(feeds_url, list) else [feeds_url]
+        for feed_idx, feed_url in enumerate(feeds_url):
+            if print_info:
+                print(
+                    f"Start the loading of the GTFS data from {feed_url} at {datetime.now()}")
+            self.feed_url = feed_url
 
-        self.feed_url = feed_url
+            response = requests.get(feed_url)
 
-        response = requests.get(feed_url)
+            if response.status_code == 200:
+                with zipfile.ZipFile(io.BytesIO(response.content)) as z:
+                    for idx, (key, record) in enumerate(self.gtfs_config.items()):
+                        if record["txt_file"] in z.namelist():
+                            with z.open(record["txt_file"]) as txt_file:
+                                if print_info:
+                                    print(f"INFO: Loading {
+                                          record["txt_file"]}...")
+                                df = pd.read_csv(txt_file, sep=",")
+                                if getattr(self, key, None) is None:
+                                    setattr(self, key, df)
+                                else:
+                                    setattr(self, key, pd.concat(
+                                        [getattr(self, key), df]).drop_duplicates())
+                                if print_info:
+                                    print(
+                                        f"SUCCESS: Loaded {len(getattr(self, key))} records from {record["txt_file"]} at {datetime.now()}")
 
-        if response.status_code == 200:
-            with zipfile.ZipFile(io.BytesIO(response.content)) as z:
-                for key, record in self.gtfs_config.items():
-                    if record["txt_file"] in z.namelist():
-                        with z.open(record["txt_file"]) as txt_file:
-                            print(f"INFO: Loading {record['txt_file']}...")
-                            df = pd.read_csv(txt_file, sep=",")
-                            setattr(self, key, df)
-                            print(
-                                f"SUCCESS: Loaded {len(df)} records from {record['txt_file']}")
-                    elif record["required"]:
-                        raise Exception(
-                            f"Required file {record['txt_file']} not found in GTFS data")
-        else:
-            raise Exception("Failed to download GTFS data:" +
-                            response.status_code)
+                        elif record["required"]:
+                            raise Exception(
+                                f"Required file {record["txt_file"]} not found in GTFS data")
+            else:
+                raise Exception("Failed to download GTFS data:" +
+                                response.status_code)
 
+            if progress_bar:
+                progress_bar.progress(calculate_progress_value(
+                    (feed_idx+1)/len(feeds_url), progress_bar_start, progress_bar_end))
         return self
 
     # Merge methods
@@ -72,11 +88,20 @@ class Feed:
         return df.merge(
             self.routes[subset], on=route_id_col_name)
 
-    def get_stations(self):
-        return np.sort(self.stops['stop_name'].unique())
+    def add_starting_terminus_stops(self, df, stop_name=True):
+        df_starting_stop, df_terminus_stop = self.get_starting_terminus_stops(
+            stop_name)
+        return df.merge(df_starting_stop, on="trip_id").merge(df_terminus_stop, on="trip_id")
+
+    # def add
 
     def filter_stops(self, stop_name):
-        return self.stops[self.stops['stop_name'].str.contains(stop_name, case=False)]
+        return self.stops[self.stops["stop_name"].str.contains(stop_name, case=False)]
+
+    def get_stations(self):
+        df = self.stop_times[["stop_id"]].drop_duplicates()
+        df = self.add_stop_names(df)
+        return np.sort(df["stop_name"].unique().tolist())
 
     def get_starting_terminus_stops(self, stop_name=True):
         # Keep only the starting stops
@@ -86,8 +111,8 @@ class Feed:
         df_terminus_stop = self.stop_times[(self.stop_times["pickup_type"] == 1) & (
             self.stop_times["drop_off_type"] == 0)][["stop_id", "trip_id"]]
 
-        columns_name = [['starting_stop_id', 'starting_stop_name'],
-                        ['terminus_stop_id', 'terminus_stop_name']]
+        columns_name = [["starting_stop_id", "starting_stop_name"],
+                        ["terminus_stop_id", "terminus_stop_name"]]
 
         dfs = [df_starting_stop, df_terminus_stop]
         for idx, df in enumerate(dfs):
@@ -108,14 +133,9 @@ class Feed:
 
         return df_starting_stop, df_terminus_stop
 
-    def add_starting_terminus_stops(self, df, stop_name=True):
-        df_starting_stop, df_terminus_stop = self.get_starting_terminus_stops(
-            stop_name)
-        return df.merge(df_starting_stop, on="trip_id").merge(df_terminus_stop, on="trip_id")
-
     def get_today_trips(self, station_name):
-        today = datetime.today().strftime('%Y%m%d')
-        df_today_calendar = self.calendar_dates[self.calendar_dates['date'] == int(
+        today = datetime.today().strftime("%Y%m%d")
+        df_today_calendar = self.calendar_dates[self.calendar_dates["date"] == int(
             today)]
         df_stations_stops = self.filter_stops(station_name)
         if df_stations_stops.empty:
@@ -134,11 +154,13 @@ class Feed:
         df.sort_values(by="departure_time", inplace=True)
 
         df["arrival_time"] = pd.to_datetime(
-            df["arrival_time"]).dt.time
+            df["arrival_time"], format="%H:%M:%S").dt.time
         df["departure_time"] = pd.to_datetime(
-            df["departure_time"]).dt.time
+            df["departure_time"], format="%H:%M:%S").dt.time
 
         df = self.add_starting_terminus_stops(df)
+        df.drop_duplicates(subset=df.columns.difference(['trip_id']),
+                           inplace=True)
 
         return df
 

@@ -28,3 +28,7 @@ def select_networks():
     tgv_network = yes_no_input(
         "Voulez-vous sélectionner le réseau TGV? (yes/no): ", True)
     return ter_network, tgv_network
+
+
+def calculate_progress_value(progress, progress_start, progress_end):
+    return progress*(progress_end - progress_start) + progress_start
