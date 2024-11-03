@@ -94,11 +94,11 @@ def render_trips_by_hour(df_today_time_table):
     df_today_time_table_by_hour["arrival_hour"] = df_today_time_table_by_hour["arrival_time"].apply(
         lambda x: x.hour)
 
-    barChart_hour_distribution = (alt.Chart(df_today_time_table_by_hour).mark_bar(size=20).encode(
-        x=alt.X('arrival_hour:Q', title="Hours",
+    barChart_hour_distribution = (alt.Chart(df_today_time_table_by_hour).mark_bar().encode(
+        x=alt.X('arrival_hour:O', title="Hours",
                 axis=alt.Axis(
-                    format='d', labelExpr="datum.value + 'h'", grid=False),
-                scale=alt.Scale(domain=[0, 23])),
+                    format='s', labelExpr="datum.value + 'h'", grid=False),
+                scale=alt.Scale(domain=list(range(24)), padding=0.1)),
         y=alt.Y('count(arrival_hour):Q', title=None,
                 axis=alt.Axis(
                     tickMinStep=1, format="d")),
@@ -125,11 +125,11 @@ def render_trips_by_type(df_today_time_table):
     df_today_time_table["arrival_hour"] = df_today_time_table["arrival_time"].apply(
         lambda x: x.hour)
 
-    barChart_type_hour_distribution = (alt.Chart(df_today_time_table).mark_bar(size=20).encode(
-        x=alt.X('arrival_hour:Q', title="Hours",
+    barChart_type_hour_distribution = alt.Chart(df_today_time_table).mark_bar().encode(
+        x=alt.X('arrival_hour:O', title="Hours",
                 axis=alt.Axis(
-                    format='d', labelExpr="datum.value + 'h'", grid=False),
-                scale=alt.Scale(domain=[0, 23])),
+                    format='s', labelExpr="datum.value + 'h'", grid=False),
+                scale=alt.Scale(domain=list(range(24)), padding=0.1)),
         y=alt.Y('count(arrival_hour):Q', title=None,
                 axis=alt.Axis(
                     tickMinStep=1, format="d")),
@@ -140,7 +140,7 @@ def render_trips_by_type(df_today_time_table):
         tooltip=[alt.Tooltip('arrival_hour:O', title='Hour'),
                  alt.Tooltip('count(arrival_hour):Q', title='Count'),
                  alt.Tooltip('route_detail:N', title='Type')]
-    ))
+    )
 
     st.altair_chart(barChart_type_hour_distribution, use_container_width=True)
 
