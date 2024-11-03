@@ -1,0 +1,34 @@
+{
+  "ter": {
+    "name": "TER",
+    "url": "https://eu.ftp.opendatasoft.com/sncf/gtfs/export-ter-gtfs-last.zip",
+    "config": {
+      "route_type": {
+        "0": {
+          "name": "Tram",
+          "emoji": ":railway_car:"
+        },
+        "2": {
+          "name": "TER",
+          "emoji": ":train:"
+        },
+        "3": {
+          "name": "Bus",
+          "emoji": ":bus:"
+        }
+      }
+    }
+  },
+  "tgv": {
+    "name": "TGV",
+    "url": "https://eu.ftp.opendatasoft.com/sncf/gtfs/export_gtfs_voyages.zip",
+    "config": {
+      "route_type": {
+        "2": {
+          "name": "TGV",
+          "emoji": ":bullettrain_front:"
+        }
+      }
+    }
+  }
+}

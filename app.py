@@ -1,35 +1,62 @@
-import streamlit as st
-import pandas as pd
-from Feed import Feed, transform_drop_off_pickup_type_to_hr
-import time
-from datetime import datetime
-from blocks import *
+import folium
+from streamlit_folium import st_folium
 import altair as alt
+from src.utils.source_reader import read_source_file
+from src.assets.blocks import *
+from src.classes.Feeds import *
+from src.imports.imports import *
+
+
+st.set_page_config(
+    page_title="Train offer by station",
+    page_icon="🚅",
+    layout="wide",
+)
 
 
 st.title("🚄 Train offer by station")
+col_description, col_logo = st.columns([3, 1])
+col_description.write(
+    "A simple streamlit app showing key metrics of the SNCF railway offer in France based on GTFS Schedule feeds.")
+
+with col_logo:
+    st.image(
+        "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSpxh8YP21u7oxu6k5Qa3bRxX5rou54GcFltw&s", width=50)
+# css style
+st.markdown(
+    "<style>.st-emotion-cache-1kyxreq.e115fcil2{justify-content: flex-end}</style>", unsafe_allow_html=True)
 
 
-# Load TER GTFS data
+@st.cache_resource(show_spinner=False)
+# Function to load GTFS data
+def load_gtfs_data(feeds_url, feeds_name, feeds_configs=None):
+    with st.spinner(text=f"Downloading GTFS data for {", ".join(gtfs_names)}... (this could take up to 1 minute)"):
+        code = st.code("Loading GTFS data...")
+        feeds = Feeds(feeds_url, feeds_name, feeds_configs).load(
+            logger_container=code)
+        code.empty()
+    return feeds
 
 
-@st.cache_data(show_spinner=False)
-def load_gtfs_data(feeds_url=[]):
-    progress_bar = st.progress(0.1, text="Loading GTFS data...")
-    gtfs = Feed().load(feeds_url, progress_bar=progress_bar, progress_bar_start=0.1)
-    progress_bar.empty()
-    return gtfs
+# Read source file that stores GTFS feeds information
+source_file = read_source_file()
+gtfs_names = [value["name"] for key, value in source_file.items()]
+gtfs_urls = [value["url"] for key, value in source_file.items()]
+gtfs_feeds_config = [value["config"] for key, value in source_file.items()]
+gtfs_feeds = load_gtfs_data(
+    gtfs_urls, gtfs_names, gtfs_feeds_config)
+
+# Display the number of trips loaded
+trips_loaded = gtfs_feeds.get_trips_count()
+st.success(f" {"{:,}".format(trips_loaded)} trips loaded", icon="✅")
+
+# Get the overall time table
+df_today_time_table = gtfs_feeds.get_time_table_info()
 
 
-ter_gtfs_url = "https://eu.ftp.opendatasoft.com/sncf/gtfs/export-ter-gtfs-last.zip"
-tgv_gtfs_url = "https://eu.ftp.opendatasoft.com/sncf/gtfs/export_gtfs_voyages.zip"
-gtfs = load_gtfs_data([ter_gtfs_url, tgv_gtfs_url])
-
-st.success(f"{gtfs.trips.shape[0]} trips loaded", icon="✅")
-
-
+####################################################
 # Train station selection
-all_stations = gtfs.get_stations()
+all_stations = gtfs_feeds.get_stations()
 station_selected = st.selectbox(
     "**Please select a train station**",
     all_stations,
@@ -39,83 +66,60 @@ station_selected = st.selectbox(
 if station_selected:
     st.write("You selected:", station_selected)
 
-
 if station_selected:
-
     # Load data for selected station
     with st.status(f"Loading data for {station_selected}...", expanded=True) as status:
+
         st.write("Loading all trips...")
-        df_today_trips = gtfs.get_today_trips(station_selected)
-        time.sleep(0.2)
+        gtfs_station_feeds = gtfs_feeds.create_station_feeds(
+            station_selected).load()
+        df_today_time_table = gtfs_station_feeds.get_time_table_info()
+        time.sleep(0.1)
+
         st.write("Loading departures...")
-        time.sleep(0.2)
-        df_today_departures = gtfs.get_today_departures(
-            station_selected, df_today_trips)
-        time.sleep(0.2)
+        df_today_departures = gtfs_station_feeds.get_departures_from_dfs(
+            df_today_time_table)
+        time.sleep(0.1)
+
         st.write("Loading arrivals...")
-        df_today_arrivals = gtfs.get_today_arrivals(
-            station_selected, df_today_trips)
-        status.update(
-            label="Data loaded", state="complete", expanded=False
-        )
-
+        df_today_arrivals = gtfs_station_feeds.get_arrivals_from_dfs(
+            df_today_time_table)
+        status.update(label="Data loaded", state="complete", expanded=False)
     st.divider()
 
-    st.divider()
+    # Display summary
     st.title("📌 Summary")
     st.markdown("""
                 ### 1. [Today's timetable](#next_trips)
                 ### 2. [Trips by hour](#trips_by_hour)
-                ### 3. [Top 10 most served train stations](#most_served_train_stations)
+                ### 3. [Trips by type](#trips_by_type)
+                ### 4. [Top 10 most served train stations](#most_served_train_stations)
                 """)
     st.divider()
 
+    ####################################################
     # Display departures and arrivals
-    tab_departures, tab_arrivals = st.tabs(["🏁 Departures", "🚩 Arrivals"])
-    with tab_departures:
+    col_departures, col_arrivals = st.columns(2)
+    # tab_departures, tab_arrivals = st.tabs(["🏁 Departures", "🚩 Arrivals"])
+    with col_departures:
         render_trips_tab(df_today_departures, "departures",
-                         "📅 Today's departures")
-    with tab_arrivals:
-        render_trips_tab(df_today_arrivals, "arrivals", "📅 Today's arrivals")
+                         "➡️ Today's departures")
+    with col_arrivals:
+        render_trips_tab(df_today_arrivals,
+                         "arrivals", "⏸️ Today's arrivals")
 
     st.divider()
 
     # Display departures by hour
-    st.title("⏰ Trips by hour", "trips_by_hour")
+    col_trips_by_hour, col_trips_by_type = st.columns(2)
+    with col_trips_by_hour:
+        st.title("⏰ Trips by hour", "trips_by_hour")
+        render_trips_by_hour(df_today_time_table)
 
-    df_today_trips_by_hour = transform_drop_off_pickup_type_to_hr(
-        df_today_trips)
-    df_today_trips_by_hour["arrival_hour"] = df_today_trips_by_hour["arrival_time"].apply(
-        lambda x: x.hour)
-    # df_today_trips_by_hour = pd.pivot_table(df_today_trips_by_hour, values="trip_id", columns=[
-    #                                         "drop_off_pickup_type"], index=["arrival_hour"], aggfunc="count", fill_value=0)
-
-    barChart_hour_distribution = (alt.Chart(df_today_trips_by_hour).mark_bar(size=20).encode(
-        x=alt.X('arrival_hour:Q', title="Hours",
-                axis=alt.Axis(
-                    format='d', labelExpr="datum.value + 'h'", grid=False),
-                scale=alt.Scale(domain=[3, 23])),
-        y=alt.Y('count(arrival_hour):Q', title=None,
-                axis=alt.Axis(
-                    tickMinStep=1, format="d")),
-        color=alt.Color('drop_off_pickup_type:N',
-                        scale=alt.Scale(
-                            range=['#fde725', '#95d840', '#20a387']),
-                        legend=alt.Legend(orient='bottom'), title="Trips type"),
-        tooltip=[alt.Tooltip('arrival_hour:O', title='Hour'),
-                 alt.Tooltip('count(arrival_hour):Q', title='Count'),
-                 alt.Tooltip('drop_off_pickup_type:N', title='Type')]
-        # column='site:N'
-    ))
-
-    st.altair_chart(barChart_hour_distribution, use_container_width=True)
-    st.info("""
-            **Description :**
-            * *Arrival* : Train that drops off passengers but does not pick up any (end of the line)
-            * *Departure* : Train that picks up passengers but does not drop off any (start of the line)
-            * *Departure/Arrival* : Train that picks up and drops off passengers
-            """)
-
+    # Display departures by route type
+    with col_trips_by_type:
+        st.title("🚉 Trips by type", "trips_by_type")
+        render_trips_by_type(df_today_time_table)
     st.divider()
 
     #############################
@@ -123,34 +127,14 @@ if station_selected:
 
     st.title(
         f"🔝 Top 10 most served train stations from {station_selected}",  "most_served_train_stations")
+    df_today_time_table_intermediate_stops = gtfs_station_feeds.add_intermediate_stop(
+        df_today_time_table)
+    render_top_10_most_served(
+        gtfs_station_feeds, df_today_time_table_intermediate_stops)
+    st.divider()
 
-    df_most_served_station = gtfs.add_intermediate_stops(df_today_trips).groupby(
-        "intermediate_stop_name").size().reset_index(name='count').sort_values(by="count", ascending=False, ignore_index=True).head(10)
-
-    barChart_most_served_stations = (alt.Chart(df_most_served_station).mark_bar().encode(
-        x=alt.X('count:Q', title=None,
-                axis=alt.Axis(
-                    tickMinStep=1, format="d")),
-        y=alt.Y('intermediate_stop_name:N', title=None,
-                sort=df_most_served_station["intermediate_stop_name"].tolist(),
-                axis=alt.Axis(labelLimit=200, labelPadding=10)),
-        # column='site:N'
-        # Ajouter un dégradé de couleur
-        color=alt.Color('count:Q', scale=alt.Scale(
-            scheme='tealblues'), legend=None),
-        tooltip=[alt.Tooltip('count:Q', title='Count'),
-                 alt.Tooltip('intermediate_stop_name:N', title='Station')]
-
-    ))
-
-    st.altair_chart(
-        barChart_most_served_stations, use_container_width=True)
-
-    # test = df_today_trips_by_hour.groupby(
-    #     ["arrival_hour", "drop_off_pickup_type"])
-    # st.dataframe(test)
-
-    # bc_today_trips_by_hour = st.bar_chart(df_today_trips_by_hour, color=(
-    #     "#fde725", "#95d840", "#20a387"))
-
-    # st.dataframe(df_today_trips)
+    #############################
+    # Map of stations served
+    st.title("🗺️ Location of stations served")
+    render_destination_map(
+        gtfs_station_feeds, df_today_time_table_intermediate_stops)

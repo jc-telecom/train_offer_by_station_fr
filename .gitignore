@@ -1,9 +1,6 @@
-/env
-/examples.ipynb
-/GTFS
-/libourne.csv
-/libourne_stops.csv
-/main.ipynb
+**/__pycache__/
+/.venv
+/build
+/train_offer_by_station_fr.egg-info
 /sandbox.ipynb
-/sandbox.py
-/__pycache__
+/test.py
