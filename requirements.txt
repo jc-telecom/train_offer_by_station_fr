@@ -9,4 +9,3 @@ Requests==2.32.3
 setuptools==75.3.0
 streamlit==1.39.0
 streamlit_folium==0.23.1
-.
