@@ -7,4 +7,7 @@ import time
 from typing import Type, List, Dict, Any
 
 import locale
-locale.setlocale(locale.LC_ALL, 'fr_FR.UTF-8')
+try:
+    locale.setlocale(locale.LC_ALL, 'fr_FR.UTF-8')
+except locale.Error:
+    locale.setlocale(locale.LC_ALL, '')  # Set to system default
